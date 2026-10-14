@@ -26,4 +26,4 @@ Edit these constants in `config.py` to change the displayed values.
    python -m streamlit run app.py
    ```
 
-If `streamlit` opens in a browser automatically, use the local URL printed in the terminal (usually http://localhost:8501).
+If `streamlit` opens in a browser automatically, use the local URL printed in the terminal.
