@@ -1,6 +1,6 @@
 # EcoVolt Smart 2.0
 
-Premium dark-themed Streamlit dashboard for a solar car project. The dashboard is hardware-independent and displays configured values from `config.py`.
+EcoVolt Smart 2.0 is a Streamlit dashboard for a solar car project. The dashboard is hardware-independent and displays configured values from `config.py`.
 
 ## Files
 - `app.py` — Streamlit dashboard, gauges, solar-car illustration, and temperature graph.
