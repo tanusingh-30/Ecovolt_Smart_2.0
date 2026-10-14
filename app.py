@@ -1,5 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import html
+import math
+import random
 
 import plotly.graph_objects as go
 import streamlit as st
@@ -167,6 +169,122 @@ with right:
         <div class="legend-row"><span>Dashboard data source</span><span class="legend-value">Local configuration</span></div>''',
         unsafe_allow_html=True,
     )
+
+# ---- Temperature history ----
+# Until a physical sensor is connected, this is an illustrative history profile
+# around the configured temperature baseline. It is intentionally labeled as such.
+st.markdown(
+    '<div class="section-head"><div class="section-title">Temperature history</div>'
+    '<div class="section-note">Recent readings · illustrative profile</div></div>',
+    unsafe_allow_html=True,
+)
+
+if "temperature_history" not in st.session_state:
+    rng = random.Random(20261014)
+    now_history = datetime.now().replace(microsecond=0)
+    baseline = float(ROOM_TEMPERATURE_C)
+    history = []
+    previous = baseline - 0.4
+    # Seed the chart with a gently changing recent profile, not a flat line.
+    for i in range(20):
+        timestamp = now_history - timedelta(seconds=(19 - i) * 30)
+        wave = 0.65 * math.sin(i * 0.58) + 0.25 * math.sin(i * 0.19 + 0.8)
+        noise = rng.uniform(-0.22, 0.22)
+        value = baseline + wave + noise
+        value = max(baseline - 1.8, min(baseline + 1.8, value))
+        previous = value
+        history.append({"timestamp": timestamp, "temperature": round(value, 1)})
+    st.session_state.temperature_history = history
+
+@st.fragment(run_every="30s")
+def temperature_history_panel():
+    history = st.session_state.temperature_history
+    now_reading = datetime.now().replace(microsecond=0)
+    baseline = float(ROOM_TEMPERATURE_C)
+    previous = float(history[-1]["temperature"]) if history else baseline
+    # Small, bounded changes make the plotted profile readable while remaining
+    # clearly identified as illustrative until sensor data is connected.
+    drift = (baseline - previous) * 0.16
+    next_value = previous + drift + random.uniform(-0.32, 0.32)
+    next_value = max(baseline - 1.8, min(baseline + 1.8, next_value))
+    if not history or (now_reading - history[-1]["timestamp"]).total_seconds() >= 25:
+        history.append({"timestamp": now_reading, "temperature": round(next_value, 1)})
+        st.session_state.temperature_history = history[-60:]
+        history = st.session_state.temperature_history
+
+    values = [item["temperature"] for item in history]
+    times = [item["timestamp"] for item in history]
+    latest = values[-1] if values else float(ROOM_TEMPERATURE_C)
+    low = min(values) if values else latest
+    high = max(values) if values else latest
+
+    m1, m2, m3 = st.columns(3, gap="medium")
+    with m1:
+        st.metric("Latest profile value", f"{latest:.1f} °C", f"{latest - baseline:+.1f} °C vs configured")
+    with m2:
+        st.metric("Recent minimum", f"{low:.1f} °C")
+    with m3:
+        st.metric("Recent maximum", f"{high:.1f} °C")
+
+    temp_fig = go.Figure()
+    temp_fig.add_trace(go.Scatter(
+        x=times,
+        y=values,
+        mode="lines+markers",
+        name="Temperature",
+        line={"color": "#a8ff60", "width": 3, "shape": "spline", "smoothing": 0.7},
+        marker={"color": "#d7ffad", "size": 5, "line": {"color": "#5fcf89", "width": 1}},
+        fill="tozeroy",
+        fillcolor="rgba(168,255,96,0.07)",
+        hovertemplate="%{x|%H:%M:%S}<br>Temperature: %{y:.1f} °C<extra></extra>",
+    ))
+    temp_fig.add_hline(
+        y=baseline,
+        line_dash="dot",
+        line_color="#648873",
+        annotation_text=f"Configured baseline: {baseline:.1f} °C",
+        annotation_position="bottom right",
+        annotation_font_color="#9eb7a5",
+    )
+    # Keep the vertical scale focused on the recent readings so small changes
+    # remain visible; the high-temperature reference is shown separately below.
+    y_min = min(min(values) - 0.8, baseline - 2.5)
+    y_max = max(max(values) + 1.0, baseline + 2.5)
+    temp_fig.update_layout(
+        height=340,
+        margin={"l": 18, "r": 24, "t": 30, "b": 35},
+        paper_bgcolor="#101915",
+        plot_bgcolor="#101915",
+        font={"family": "Manrope", "color": "#eff8f1"},
+        showlegend=False,
+        hovermode="x unified",
+        xaxis={"title": "Time", "showgrid": False, "zeroline": False, "color": "#91a49a", "tickformat": "%H:%M:%S"},
+        yaxis={
+            "title": "Temperature (°C)",
+            "range": [y_min, y_max],
+            "gridcolor": "#26372c",
+            "zeroline": False,
+            "color": "#91a49a",
+        },
+    )
+    st.plotly_chart(temp_fig, use_container_width=True, config={"displayModeBar": False})
+
+    with st.expander("View recent reading history", expanded=True):
+        rows = [
+            {"Time": item["timestamp"].strftime("%d %b %H:%M:%S"), "Temperature (°C)": item["temperature"]}
+            for item in reversed(history[-12:])
+        ]
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    note = (
+        "Temperature values are an illustrative profile around the configured baseline. Connect a sensor to display actual measurements."
+        if TEMPERATURE_IS_PLACEHOLDER
+        else "Temperature history is an illustrative profile around the configured value. Connect a sensor to display actual measurements."
+    )
+    st.caption(note)
+    st.caption(f"Temperature alert reference: {TEMPERATURE_HIGH_C} °C")
+
+temperature_history_panel()
 
 st.markdown(
     f'''<div class="footer"><span>© EcoVolt Smart 2.0 · Solar mobility dashboard</span><span>Last page refresh: {now.strftime('%H:%M:%S')} · Values are configuration-based</span></div>''',
